@@ -1,17 +1,25 @@
-# vmagent-ui 部署说明（Go + MySQL 迁移版）
+# vmagent-ui 部署说明（Go + MySQL 现状版）
 
-这份文档对应的是 **Go/Gin + MySQL** 方向，不再把旧的 Node/Fastify 当目标架构。
+这份文档描述的是 **当前仓库已经落地的实现**，不是未来规划。
 
 ---
 
 ## 1. 架构
 
-当前目标架构：
+当前后端架构：
 
-- API 后端：Go + Gin
+- API：Go + Gin
 - 数据库：MySQL 8+
 - 前端：静态页面 `public/`
-- vmagent 实际生效方式：后续接 reload / restart / file write pipeline
+- 配置落地：写入 `VMAGENT_CONFIG_PATH`
+- apply：支持 reload / SIGHUP / restart command
+
+apply 优先级：
+
+1. `VMAGENT_RELOAD_URL`
+2. `VMAGENT_PID`
+3. `VMAGENT_RESTART_CMD`
+4. noop
 
 ---
 
@@ -45,9 +53,15 @@ export MYSQL_DSN='root:root@tcp(127.0.0.1:3306)/vmagent_ui?parseTime=true&multiS
 go run ./cmd/server
 ```
 
+也可以：
+
+```bash
+./scripts/start-go-backend.sh
+```
+
 ---
 
-## 3. 初始化数据库
+## 3. 数据库
 
 schema 文件：
 
@@ -59,21 +73,11 @@ schema 文件：
 - `revisions`
 - `audit_logs`
 
-服务启动时也会自动执行基础 migration。
+服务启动时会自动尝试执行基础 migration。
 
 ---
 
 ## 4. 生产部署最短路径
-
-### 目录建议
-
-```text
-/opt/vmagent-ui/
-  vmagent-ui              # Go 二进制
-  public/
-  config/
-  .env
-```
 
 ### 编译
 
@@ -82,7 +86,17 @@ cd vmagent-ui
 go build -o vmagent-ui ./cmd/server
 ```
 
-### systemd
+### 推荐目录
+
+```text
+/opt/vmagent-ui/
+  vmagent-ui
+  public/
+  config/
+  .env
+```
+
+### systemd 托管 vmagent-ui 自身
 
 ```ini
 [Unit]
@@ -110,9 +124,33 @@ sudo systemctl status vmagent-ui --no-pager
 
 ---
 
-## 5. 反向代理
+## 5. vmagent apply 接法
 
-建议只监听本机地址，再让 Nginx 反代：
+### 方式 A：HTTP reload
+
+```bash
+export VMAGENT_RELOAD_URL="http://127.0.0.1:8429/-/reload"
+```
+
+### 方式 B：SIGHUP
+
+```bash
+export VMAGENT_PID=12345
+```
+
+### 方式 C：restart command
+
+```bash
+export VMAGENT_RESTART_CMD="systemctl restart vmagent"
+```
+
+如果都不配，发布/回滚只会写配置文件，不会触发生效动作。
+
+---
+
+## 6. 反向代理
+
+建议只监听本机，再用 Nginx 反代：
 
 ```nginx
 server {
@@ -131,20 +169,30 @@ server {
 
 ---
 
-## 6. 当前限制
+## 7. 当前接口覆盖面
 
-这还是迁移第一阶段：
+已经可用：
 
-- rollback 还没迁完
-- deployment export 还没迁完
-- systemd controlled apply 还没迁完
-- risk scan 规则还没完整迁到 Go
-- apply vmagent 还只是基础占位
+- config 读写 / validate / publish
+- revisions / rollback / audit
+- runtime profile
+- deployment artifacts
+- compose export
+- systemd plan / controlled apply
+- render-yaml
+- risk scan + manual decision semantics
 
-所以现在最适合：
+---
 
-- 后端重构起步
-- 接口对齐迭代
-- 本地联调 / 内部验证
+## 8. 当前仍需继续打磨的点
 
-还不适合直接宣称“完整生产版已经完成”。
+虽然主链路已经在 Go 版落地，但现在仍建议把它视为：
+
+> **可运行、可继续迭代的迁移后版本**
+
+还值得继续补的地方：
+
+- 前端端到端交互回归
+- deployment/runtime 子结构进一步细化
+- 旧 Node 参考实现的退役与清理
+- 更多真实环境验收（尤其是 vmagent reload / restart 行为）
