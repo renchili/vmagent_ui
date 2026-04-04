@@ -161,6 +161,21 @@ function collectRuleBundle() {
       labelNaming: { enabled: el('labelRuleEnabled').checked, pattern: el('labelRulePattern').value },
       metricNaming: { enabled: el('metricRuleEnabled').checked, pattern: el('metricRulePattern').value },
       suspiciousChanges: { enabled: el('suspiciousRuleEnabled').checked, additionsThreshold: Number(el('suspiciousThreshold').value || 5) },
+      metricsVolume: {
+        enabled: el('metricsVolumeEnabled').checked,
+        estimatedSeriesPerTarget: Number(el('estimatedSeriesPerTarget').value || 1000),
+        maxEstimatedSeries: Number(el('maxEstimatedSeries').value || 200000),
+        maxLabelCombinationsPerMetric: Number(el('maxLabelCombinationsPerMetric').value || 1000),
+        highCardinalityLabels: el('highCardinalityLabels').value.split(',').map((s) => s.trim()).filter(Boolean),
+        growthTrend: {
+          enabled: el('growthTrendEnabled').checked,
+          maxGrowthRatio: Number(el('maxGrowthRatio').value || 0.3),
+          consecutiveGrowthPeriods: Number(el('consecutiveGrowthPeriods').value || 3),
+          minHistoryPoints: Number(el('minHistoryPoints').value || 3),
+          observedTotalSeriesHistory: safeParseJson(el('observedTotalSeriesHistory').value) || [],
+        },
+        observedMetrics: safeParseJson(el('observedMetrics').value) || [],
+      },
     },
   };
 }

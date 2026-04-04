@@ -150,7 +150,9 @@ VMAGENT_RESTART_CMD="systemctl restart vmagent"
 
 - 前端还需要继续做端到端交互核对
 - 某些 runtime / deployment 子结构还是偏简化实现
-- 旧 Node 参考实现还没彻底清理或明确退役边界
+- 旧 Node 参考实现虽然已明确标记为 deprecated，但还未完全移除
+
+旧 Node 后端的退役说明见：[`DEPRECATED_NODE_BACKEND.md`](./DEPRECATED_NODE_BACKEND.md)
 
 ---
 
