@@ -186,8 +186,17 @@ VMAGENT_RESTART_CMD="systemctl restart vmagent"
 
 ---
 
-## 现在最适合做什么
+## 当前状态总结
 
-- 用它继续推进 Go + MySQL 版本迭代
-- 在真实 vmagent 环境里测试 reload / restart 接入
-- 逐步把旧 Node 后端降级成参考实现，再最终移除
+现在这套仓库已经明确以 **Go + MySQL** 为主线：
+
+- 默认启动入口已经切到 Go
+- 旧 Node 后端已降级为 deprecated 参考实现
+- Go 单元测试已补入仓库并可直接运行
+- 真实 vmagent 联调脚本与 compose 环境已补入仓库
+
+后续如果继续推进，重点就不再是“决定要不要迁”，而是：
+
+- 继续把真实 vmagent 联调跑到完全稳定
+- 增加更多自动化测试覆盖
+- 最终清理或移除旧 Node 参考实现
