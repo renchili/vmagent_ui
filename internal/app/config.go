@@ -11,6 +11,8 @@ type Config struct {
 	DefaultAuthor     string
 	ApplyMode         string
 	ReloadURL         string
+	ReloadSignalPID   string
+	RestartCommand    string
 	VmagentConfigPath string
 }
 
@@ -24,6 +26,8 @@ func LoadConfig() Config {
 		DefaultAuthor:     getenv("DEFAULT_AUTHOR", "web-ui"),
 		ApplyMode:         getenv("APPLY_MODE", "noop"),
 		ReloadURL:         os.Getenv("VMAGENT_RELOAD_URL"),
+		ReloadSignalPID:   os.Getenv("VMAGENT_PID"),
+		RestartCommand:    os.Getenv("VMAGENT_RESTART_CMD"),
 		VmagentConfigPath: getenv("VMAGENT_CONFIG_PATH", "/etc/vmagent/config.yml"),
 	}
 }

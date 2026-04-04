@@ -81,7 +81,7 @@ func (s *Server) routes() {
 }
 
 func (s *Server) handleHealth(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"ok": true, "backend": "go-gin", "database": "mysql", "configPath": s.cfg.VmagentConfigPath})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "backend": "go-gin", "database": "mysql", "configPath": s.cfg.VmagentConfigPath, "applyMode": s.cfg.ApplyMode})
 }
 
 func (s *Server) handleGetConfig(c *gin.Context) {
@@ -121,7 +121,7 @@ func (s *Server) handleValidate(c *gin.Context) {
 		"runtimeProfile": draft.RuntimeProfile,
 		"deploymentArtifacts": RenderDeploymentArtifacts(draft.RuntimeProfile, s.cfg.VmagentConfigPath),
 		"ruleBundle": bundleFromRuntime(draft.RuntimeProfile),
-		"validation": gin.H{"ok": len(runtimeErrors) == 0, "backend": "go-gin", "errors": runtimeErrors, "notes": []string{"基础 YAML/JSON 解析通过", "风险扫描已切到 Go 第一版", "runtime profile 校验已接到 Go"}},
+		"validation": gin.H{"ok": len(runtimeErrors) == 0, "backend": "go-gin", "errors": runtimeErrors, "notes": []string{"基础 YAML/JSON 解析通过", "风险扫描已切到 Go", "runtime profile 校验已接到 Go"}},
 		"riskScan": riskScan,
 	})
 }
@@ -147,8 +147,9 @@ func (s *Server) handlePublish(c *gin.Context) {
 	rev, err := s.store.CreateRevision(c.Request.Context(), draft)
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	if err := writeConfigFile(s.cfg.VmagentConfigPath, draft.YAML); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
+	applyResult := s.applyConfig()
 	if err := s.store.AppendAudit(c.Request.Context(), "publish", draft.Author, summaryOrDefault(draft.Note, "Published config"), &rev.ID); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
-	c.JSON(http.StatusOK, gin.H{"ok": true, "revision": rev, "riskDecision": riskDecision, "deploymentArtifacts": RenderDeploymentArtifacts(draft.RuntimeProfile, s.cfg.VmagentConfigPath), "applyResult": gin.H{"method": s.cfg.ApplyMode, "ok": true, "message": "apply pipeline placeholder for Go backend"}})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "revision": rev, "riskDecision": riskDecision, "deploymentArtifacts": RenderDeploymentArtifacts(draft.RuntimeProfile, s.cfg.VmagentConfigPath), "applyResult": applyResult})
 }
 
 func (s *Server) handleListRevisions(c *gin.Context) {
@@ -166,8 +167,9 @@ func (s *Server) handleRollback(c *gin.Context) {
 	draft := &ConfigDraft{Mode: rev.Mode, YAML: rev.YAML, JSON: rev.JSON, Structured: map[string]any{}, RuntimeProfile: NormalizeRuntimeProfile(rev.RuntimeProfile), Author: rev.Author, Note: "rollback to revision " + rev.RevisionKey}
 	if err := s.store.SaveDraft(c.Request.Context(), draft); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	if err := writeConfigFile(s.cfg.VmagentConfigPath, rev.YAML); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
+	applyResult := s.applyConfig()
 	if err := s.store.AppendAudit(c.Request.Context(), "rollback", s.cfg.DefaultAuthor, fmt.Sprintf("Rollback to %s", rev.RevisionKey), &rev.ID); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
-	c.JSON(http.StatusOK, gin.H{"ok": true, "revision": rev, "deploymentArtifacts": RenderDeploymentArtifacts(draft.RuntimeProfile, s.cfg.VmagentConfigPath), "applyResult": gin.H{"method": s.cfg.ApplyMode, "ok": true, "message": "rollback applied"}})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "revision": rev, "deploymentArtifacts": RenderDeploymentArtifacts(draft.RuntimeProfile, s.cfg.VmagentConfigPath), "applyResult": applyResult})
 }
 
 func (s *Server) handleAudit(c *gin.Context) {
@@ -378,7 +380,39 @@ func bundleFromRuntime(profile RuntimeProfile) RuleBundle {
 				if v, ok := m["enabled"].(bool); ok { bundle.Rules.SuspiciousChanges.Enabled = v }
 				if v, ok := m["additionsThreshold"].(float64); ok { bundle.Rules.SuspiciousChanges.AdditionsThreshold = int(v) }
 			}
+			if m, ok := rules["metricsVolume"].(map[string]any); ok {
+				if v, ok := m["enabled"].(bool); ok { bundle.Rules.MetricsVolume.Enabled = v }
+				if v, ok := m["estimatedSeriesPerTarget"].(float64); ok { bundle.Rules.MetricsVolume.EstimatedSeriesPerTarget = int(v) }
+				if v, ok := m["maxEstimatedSeries"].(float64); ok { bundle.Rules.MetricsVolume.MaxEstimatedSeries = int(v) }
+				if v, ok := m["maxLabelCombinationsPerMetric"].(float64); ok { bundle.Rules.MetricsVolume.MaxLabelCombinationsPerMetric = int(v) }
+				if arr, ok := m["highCardinalityLabels"].([]any); ok {
+					labels := []string{}
+					for _, item := range arr { labels = append(labels, fmt.Sprintf("%v", item)) }
+					bundle.Rules.MetricsVolume.HighCardinalityLabels = labels
+				}
+				if gt, ok := m["growthTrend"].(map[string]any); ok {
+					if v, ok := gt["enabled"].(bool); ok { bundle.Rules.MetricsVolume.GrowthTrend.Enabled = v }
+					if v, ok := gt["minHistoryPoints"].(float64); ok { bundle.Rules.MetricsVolume.GrowthTrend.MinHistoryPoints = int(v) }
+					if v, ok := gt["consecutiveGrowthPeriods"].(float64); ok { bundle.Rules.MetricsVolume.GrowthTrend.ConsecutiveGrowthPeriods = int(v) }
+					if v, ok := gt["maxGrowthRatio"].(float64); ok { bundle.Rules.MetricsVolume.GrowthTrend.MaxGrowthRatio = v }
+					if arr, ok := gt["observedTotalSeriesHistory"].([]any); ok {
+						h := []float64{}
+						for _, item := range arr { if f, ok := item.(float64); ok { h = append(h, f) } }
+						bundle.Rules.MetricsVolume.GrowthTrend.ObservedTotalSeriesHistory = h
+					}
+				}
+				if arr, ok := m["observedMetrics"].([]any); ok {
+					metrics := []ObservedMetric{}
+					for _, item := range arr {
+						mm, _ := item.(map[string]any)
+						metrics = append(metrics, ObservedMetric{Name: stringValue(mm["name"]), SeriesCount: intValue(mm["seriesCount"]), LabelCombinations: intValue(mm["labelCombinations"]), GrowthRatio: floatValue(mm["growthRatio"])})
+					}
+					bundle.Rules.MetricsVolume.ObservedMetrics = metrics
+				}
+			}
 		}
 	}
 	return NormalizeRuleBundle(bundle)
 }
+
+func floatValue(v any) float64 { switch x := v.(type) { case float64: return x; case int: return float64(x); default: return 0 } }
