@@ -1,0 +1,34 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: vmagent_ui
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  vmagent-ui:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3099
+      MYSQL_DSN: root:root@tcp(mysql:3306)/vmagent_ui?parseTime=true&multiStatements=true
+      STATIC_DIR: public
+      DEFAULT_CONFIG_PATH: config/sample-vmagent.yml
+      DEFAULT_AUTHOR: web-ui
+      VMAGENT_CONFIG_PATH: /etc/vmagent/config.yml
+      APPLY_MODE: noop
+    ports:
+      - "3099:3099"
+    volumes:
+      - ./config:/app/config
+      - ./public:/app/public:ro
+
+volumes:
+  mysql-data:
