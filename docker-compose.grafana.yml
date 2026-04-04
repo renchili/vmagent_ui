@@ -1,0 +1,78 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: vmagent_ui
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.112.0
+    restart: unless-stopped
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--httpListenAddr=:8428"
+    ports:
+      - "8428:8428"
+    volumes:
+      - victoria-metrics-data:/victoria-metrics-data
+
+  vmagent:
+    image: victoriametrics/vmagent:v1.112.0
+    restart: unless-stopped
+    depends_on:
+      - victoria-metrics
+      - vmagent-ui
+    command:
+      - "-promscrape.config=/etc/vmagent/prometheus.yml"
+      - "-remoteWrite.url=http://victoria-metrics:8428/api/v1/write"
+      - "-httpListenAddr=:8429"
+    ports:
+      - "8429:8429"
+    volumes:
+      - ./config/grafana-vmagent.yml:/etc/vmagent/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    restart: unless-stopped
+    depends_on:
+      - victoria-metrics
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+
+  vmagent-ui:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3099
+      MYSQL_DSN: root:root@tcp(mysql:3306)/vmagent_ui?parseTime=true&multiStatements=true
+      STATIC_DIR: public
+      DEFAULT_CONFIG_PATH: config/sample-vmagent.yml
+      DEFAULT_AUTHOR: web-ui
+      VMAGENT_CONFIG_PATH: /etc/vmagent/config.yml
+      APPLY_MODE: noop
+      VMAGENT_RELOAD_URL: http://vmagent:8429/-/reload
+    ports:
+      - "3099:3099"
+    volumes:
+      - ./config:/app/config
+      - ./public:/app/public:ro
+
+volumes:
+  mysql-data:
+  victoria-metrics-data:
+  grafana-data:

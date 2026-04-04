@@ -80,6 +80,25 @@ docker compose -f docker-compose.mysql.yml up --build
 
 - <http://127.0.0.1:3099>
 
+### 方式 1B：带 Grafana / VictoriaMetrics 的联调栈
+
+```bash
+cd vmagent-ui
+docker compose -f docker-compose.grafana.yml up --build
+```
+
+打开：
+
+- vmagent-ui: <http://127.0.0.1:3099>
+- Grafana: <http://127.0.0.1:3000>
+- VictoriaMetrics: <http://127.0.0.1:8428>
+
+Grafana 默认登录：
+
+- `admin / admin`
+
+详细说明见：`docs/grafana.md`
+
 ### 方式 2：本机 Go + 本机 MySQL
 
 先准备数据库：

@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: vmagent
+    static_configs:
+      - targets:
+          - vmagent:8429
+        labels:
+          service: vmagent
+
+  - job_name: victoria-metrics
+    static_configs:
+      - targets:
+          - victoria-metrics:8428
+        labels:
+          service: victoria-metrics
+
+remote_write:
+  - url: http://victoria-metrics:8428/api/v1/write
