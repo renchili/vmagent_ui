@@ -163,40 +163,27 @@ VMAGENT_RESTART_CMD="systemctl restart vmagent"
 
 ---
 
-## 当前边界
+## 当前状态
 
-已经完成：
+当前仓库已经完成这些核心切换：
 
-- Go 后端主链路
-- MySQL 持久化（draft / revision / audit）
-- rollback
-- runtime profile 第一版
-- deployment / compose / systemd 基础接口
-- 风险规则主干
-- 真实 apply pipeline
-- `go build ./cmd/server` 编译通过
-
-仍然建议视为 **迁移后的可用开发版 / 内部版**，不是已经完全打磨完的最终生产版。原因主要是：
-
-- 前端还需要继续做端到端交互核对
-- 某些 runtime / deployment 子结构还是偏简化实现
-- 旧 Node 参考实现虽然已明确标记为 deprecated，但还未完全移除
-
-旧 Node 后端的退役说明见：[`DEPRECATED_NODE_BACKEND.md`](./DEPRECATED_NODE_BACKEND.md)
-
----
-
-## 当前状态总结
-
-现在这套仓库已经明确以 **Go + MySQL** 为主线：
-
+- Go 后端主链路已落地
+- MySQL 持久化（draft / revision / audit）已落地
+- rollback 已落地
+- runtime profile / deployment / compose / systemd 基础接口已落地
+- 风险规则主干已落地
+- 真实 apply pipeline 已落地
+- `go build ./cmd/server` 与 `go test ./...` 已通过
 - 默认启动入口已经切到 Go
 - 旧 Node 后端已降级为 deprecated 参考实现
-- Go 单元测试已补入仓库并可直接运行
+- Go 单元测试已补入仓库
 - 真实 vmagent 联调脚本与 compose 环境已补入仓库
 
-后续如果继续推进，重点就不再是“决定要不要迁”，而是：
+当前仍然明确保留的边界：
 
-- 继续把真实 vmagent 联调跑到完全稳定
-- 增加更多自动化测试覆盖
-- 最终清理或移除旧 Node 参考实现
+- 前端端到端交互还可以继续细抠
+- 某些 runtime / deployment 子结构仍是简化实现
+- 真实 vmagent 联调已经做了多轮排错，但还在继续收尾
+- 旧 Node 参考实现还没有最终删除
+
+旧 Node 后端的退役说明见：[`DEPRECATED_NODE_BACKEND.md`](./DEPRECATED_NODE_BACKEND.md)
