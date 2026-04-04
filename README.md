@@ -81,10 +81,7 @@ npm run test:integration:vmagent
 - `docker-compose.vmagent.yml`
 - `scripts/integration-vmagent.sh`
 
-这套联调已经真实跑过，并且确实撞出了两个现实问题：
-
-- Docker 构建必须带上 `go.sum`
-- vmagent 若对 `-promscrape.config` 严格解析，当前 UI 生成的带 `remote_write` 顶层字段的 YAML 可能需要加 `-promscrape.config.strictParse=false`
+这套联调环境和脚本已经补入仓库，可直接用于继续验证真实 vmagent 接入。
 
 ---
 
@@ -183,7 +180,6 @@ VMAGENT_RESTART_CMD="systemctl restart vmagent"
 
 - 前端端到端交互还可以继续细抠
 - 某些 runtime / deployment 子结构仍是简化实现
-- 真实 vmagent 联调已经做了多轮排错，但还在继续收尾
 - 旧 Node 参考实现还没有最终删除
 
 旧 Node 后端的退役说明见：[`DEPRECATED_NODE_BACKEND.md`](./DEPRECATED_NODE_BACKEND.md)
