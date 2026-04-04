@@ -35,6 +35,58 @@ npm start
 
 - <http://127.0.0.1:3099>
 
+### 后端快速部署（单机最短路径）
+
+如果你要的不是开发模式，而是把这套后端尽快落到一台机器上，最短路径就是直接把整个 Node 服务跑起来：
+
+```bash
+cd /opt/vmagent-ui
+npm ci --omit=dev
+export HOST=127.0.0.1
+export PORT=3099
+export VMAGENT_CONFIG_PATH=/etc/vmagent/config.yml
+export VMAGENT_RELOAD_URL=http://127.0.0.1:8429/-/reload
+npm start
+```
+
+最小上线建议：
+
+- 用 `Nginx` / `Caddy` 反代 `127.0.0.1:3099`
+- 不要直接把 3099 暴露到公网
+- `config/` 和 `data/` 放持久盘
+- 如果接真实 vmagent，优先配 `VMAGENT_RELOAD_URL`
+
+如果想做成常驻服务，可以先用 `systemd` 最小化托管：
+
+```ini
+[Unit]
+Description=vmagent-ui
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/vmagent-ui
+Environment=HOST=127.0.0.1
+Environment=PORT=3099
+Environment=VMAGENT_CONFIG_PATH=/etc/vmagent/config.yml
+Environment=VMAGENT_RELOAD_URL=http://127.0.0.1:8429/-/reload
+ExecStart=/usr/bin/npm start
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+```
+
+然后：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now vmagent-ui
+sudo systemctl status vmagent-ui --no-pager
+```
+
+更完整的部署说明见：[`docs/deployment.md`](./docs/deployment.md)
+
 ### 可用脚本
 
 ```bash
