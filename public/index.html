@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vmagent UI</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <h1>vmagent 配置管理台</h1>
+        <p>编辑 YAML / JSON、校验、发布、回滚、查看审计记录。</p>
+      </div>
+      <div class="actions">
+        <button id="loadBtn">重新加载</button>
+        <button id="validateBtn">校验</button>
+        <button id="saveBtn">保存草稿</button>
+        <button id="publishBtn" class="primary">发布</button>
+      </div>
+    </header>
+
+    <section class="grid two">
+      <div class="card status-card">
+        <h2>当前状态</h2>
+        <div id="health"></div>
+        <div class="meta-row"><strong>配置路径：</strong><span id="configPath"></span></div>
+        <div class="meta-row"><strong>草稿路径：</strong><span id="draftPath"></span></div>
+      </div>
+      <div class="card">
+        <h2>发布说明</h2>
+        <label>发布备注</label>
+        <input id="note" placeholder="例如：新增 kafka-exporter 抓取任务" />
+        <label>操作者</label>
+        <input id="author" value="web-ui" />
+      </div>
+    </section>
+
+    <section class="grid two equal">
+      <div class="card">
+        <div class="section-head">
+          <h2>YAML 编辑器</h2>
+          <button id="formatBtn">根据 JSON 重新格式化</button>
+        </div>
+        <textarea id="yamlEditor" spellcheck="false"></textarea>
+      </div>
+      <div class="card">
+        <div class="section-head">
+          <h2>JSON 预览</h2>
+          <button id="jsonRefreshBtn">从 YAML 刷新</button>
+        </div>
+        <textarea id="jsonEditor" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+    <section class="grid two equal">
+      <div class="card">
+        <h2>校验结果</h2>
+        <pre id="validationOutput">等待校验…</pre>
+      </div>
+      <div class="card">
+        <h2>版本历史</h2>
+        <div id="revisionList" class="list"></div>
+      </div>
+    </section>
+
+    <section class="grid two equal">
+      <div class="card">
+        <h2>审计日志</h2>
+        <div id="auditList" class="list"></div>
+      </div>
+      <div class="card">
+        <h2>使用说明</h2>
+        <ol>
+          <li>左侧编辑 YAML。</li>
+          <li>点击“校验”检查结构与 vmagent dry-run。</li>
+          <li>保存草稿或直接发布。</li>
+          <li>在版本历史中查看或回滚。</li>
+        </ol>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

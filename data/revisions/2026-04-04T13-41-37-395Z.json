@@ -1,0 +1,60 @@
+{
+  "id": "2026-04-04T13-41-37-395Z",
+  "author": "openclaw",
+  "note": "initial demo publish",
+  "createdAt": "2026-04-04T13:41:37.395Z",
+  "sha256": "8875820709a36579d9f24f30cb098a508105c29a0010385e67827b9f1b81cedf",
+  "summary": {
+    "scrapeJobs": [
+      "node-exporter",
+      "demo-app"
+    ],
+    "remoteWriteCount": 1
+  },
+  "validation": {
+    "ok": true,
+    "nativeCheck": {
+      "ok": true,
+      "skipped": true,
+      "reason": "vmagent binary not available; native check skipped."
+    },
+    "errors": []
+  },
+  "yaml": "global:\n  scrape_interval: 15s\n  scrape_timeout: 10s\nscrape_configs:\n  - job_name: node-exporter\n    static_configs:\n      - targets:\n          - 127.0.0.1:9100\n        labels:\n          env: demo\n  - job_name: demo-app\n    static_configs:\n      - targets:\n          - demo.internal:8080\nremote_write:\n  - url: http://victoriametrics:8428/api/v1/write\n",
+  "json": {
+    "global": {
+      "scrape_interval": "15s",
+      "scrape_timeout": "10s"
+    },
+    "scrape_configs": [
+      {
+        "job_name": "node-exporter",
+        "static_configs": [
+          {
+            "targets": [
+              "127.0.0.1:9100"
+            ],
+            "labels": {
+              "env": "demo"
+            }
+          }
+        ]
+      },
+      {
+        "job_name": "demo-app",
+        "static_configs": [
+          {
+            "targets": [
+              "demo.internal:8080"
+            ]
+          }
+        ]
+      }
+    ],
+    "remote_write": [
+      {
+        "url": "http://victoriametrics:8428/api/v1/write"
+      }
+    ]
+  }
+}
