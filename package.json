@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.mjs",
     "test:screenshot": "node scripts/screenshot.mjs",
-    "test:smoke": "node scripts/smoke-test.mjs"
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "test:load": "node scripts/load-test.mjs"
   },
   "dependencies": {
     "fastify": "^5.6.1",

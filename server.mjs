@@ -144,7 +144,9 @@ app.post('/api/deployment/compose/export', async (request, reply) => {
   if (!runtimeValidation.ok) return reply.code(400).send(runtimeValidation);
   const artifact = renderDeploymentArtifacts(runtimeValidation.profile).compose;
   const fileName = sanitizeFileName(body.fileName || 'docker-compose.vmagent.yml');
-  const outputPath = body.outputPath ? path.resolve(__dirname, body.outputPath) : path.join(__dirname, 'data', fileName);
+  const outputPathResult = resolveSafeProjectPath(body.outputPath, path.join(__dirname, 'data', fileName), 'outputPath');
+  if (!outputPathResult.ok) return reply.code(400).send(outputPathResult);
+  const outputPath = outputPathResult.path;
   const mode = body.mode || 'inline';
   if (mode === 'save') {
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -165,7 +167,10 @@ app.post('/api/systemd/plan', async (request, reply) => {
   const runtimeValidation = validateRuntimeProfile(body.runtimeProfile || await loadRuntimeProfile(RUNTIME_PROFILE_PATH));
   if (!runtimeValidation.ok) return reply.code(400).send(runtimeValidation);
   const artifacts = renderDeploymentArtifacts(runtimeValidation.profile);
-  const plan = await buildSystemdPlan(runtimeValidation.profile, { artifact: artifacts.systemd, targetDir: body.targetDir || runtimeValidation.profile.deployment.systemd.controlledApply.targetDir, enableWrites: false });
+  const targetDirInput = body.targetDir || runtimeValidation.profile.deployment.systemd.controlledApply.targetDir;
+  const targetDirResult = resolveSafeProjectPath(targetDirInput, '', 'targetDir', { allowEmpty: true, expectDirectory: true });
+  if (!targetDirResult.ok) return reply.code(400).send(targetDirResult);
+  const plan = await buildSystemdPlan(runtimeValidation.profile, { artifact: artifacts.systemd, targetDir: targetDirResult.path || '', enableWrites: false });
   return { ok: true, plan, artifact: artifacts.systemd };
 });
 
@@ -174,8 +179,10 @@ app.post('/api/systemd/apply', async (request, reply) => {
   const runtimeValidation = validateRuntimeProfile(body.runtimeProfile || await loadRuntimeProfile(RUNTIME_PROFILE_PATH));
   if (!runtimeValidation.ok) return reply.code(400).send(runtimeValidation);
   const artifacts = renderDeploymentArtifacts(runtimeValidation.profile);
-  const targetDir = body.targetDir || runtimeValidation.profile.deployment.systemd.controlledApply.targetDir;
-  const result = await executeSystemdPlan({ fs, profile: runtimeValidation.profile, artifact: artifacts.systemd, options: { targetDir, enableWrites: Boolean(body.enableWrites) } });
+  const targetDirInput = body.targetDir || runtimeValidation.profile.deployment.systemd.controlledApply.targetDir;
+  const targetDirResult = resolveSafeProjectPath(targetDirInput, '', 'targetDir', { allowEmpty: true, expectDirectory: true });
+  if (!targetDirResult.ok) return reply.code(400).send(targetDirResult);
+  const result = await executeSystemdPlan({ fs, profile: runtimeValidation.profile, artifact: artifacts.systemd, options: { targetDir: targetDirResult.path || '', enableWrites: Boolean(body.enableWrites) } });
   if (!result.ok) return reply.code(400).send(result);
   return result;
 });
@@ -334,3 +341,23 @@ async function ensurePaths() { await fs.mkdir(path.join(DATA_DIR, 'revisions'), 
 async function exists(filePath) { try { await fs.access(filePath); return true; } catch { return false; } }
 function shellEscape(value) { return `'${String(value).replace(/'/g, `'\\''`)}'`; }
 function sanitizeFileName(value) { return String(value || 'docker-compose.vmagent.yml').replace(/[^a-zA-Z0-9._-]/g, '_'); }
+function resolveSafeProjectPath(inputPath, fallbackPath, fieldName, options = {}) {
+  const { allowEmpty = false, expectDirectory = false } = options;
+  const raw = String(inputPath || '').trim();
+  if (!raw) {
+    if (allowEmpty) return { ok: true, path: '' };
+    return { ok: true, path: fallbackPath };
+  }
+  const resolved = path.resolve(__dirname, raw);
+  const relative = path.relative(__dirname, resolved);
+  if (path.isAbsolute(raw)) {
+    return { ok: false, error: `${fieldName} must be a project-relative path`, errors: [{ source: 'path', path: fieldName, message: `${fieldName} 必须使用项目内相对路径。` }] };
+  }
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return { ok: false, error: `${fieldName} escapes project root`, errors: [{ source: 'path', path: fieldName, message: `${fieldName} 不允许逃逸项目目录。` }] };
+  }
+  if (expectDirectory && path.extname(raw)) {
+    return { ok: false, error: `${fieldName} must point to a directory`, errors: [{ source: 'path', path: fieldName, message: `${fieldName} 应指向目录，而不是文件。` }] };
+  }
+  return { ok: true, path: resolved };
+}

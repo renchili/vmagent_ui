@@ -139,6 +139,17 @@ function fillRuleBundle(bundle) {
   el('metricRulePattern').value = bundle?.rules?.metricNaming?.pattern || '';
   el('suspiciousRuleEnabled').checked = Boolean(bundle?.rules?.suspiciousChanges?.enabled);
   el('suspiciousThreshold').value = bundle?.rules?.suspiciousChanges?.additionsThreshold ?? 5;
+  el('metricsVolumeEnabled').checked = Boolean(bundle?.rules?.metricsVolume?.enabled);
+  el('estimatedSeriesPerTarget').value = bundle?.rules?.metricsVolume?.estimatedSeriesPerTarget ?? 1000;
+  el('maxEstimatedSeries').value = bundle?.rules?.metricsVolume?.maxEstimatedSeries ?? 200000;
+  el('maxLabelCombinationsPerMetric').value = bundle?.rules?.metricsVolume?.maxLabelCombinationsPerMetric ?? 1000;
+  el('highCardinalityLabels').value = (bundle?.rules?.metricsVolume?.highCardinalityLabels || []).join(',');
+  el('growthTrendEnabled').checked = Boolean(bundle?.rules?.metricsVolume?.growthTrend?.enabled);
+  el('maxGrowthRatio').value = bundle?.rules?.metricsVolume?.growthTrend?.maxGrowthRatio ?? 0.3;
+  el('consecutiveGrowthPeriods').value = bundle?.rules?.metricsVolume?.growthTrend?.consecutiveGrowthPeriods ?? 3;
+  el('minHistoryPoints').value = bundle?.rules?.metricsVolume?.growthTrend?.minHistoryPoints ?? 3;
+  el('observedTotalSeriesHistory').value = JSON.stringify(bundle?.rules?.metricsVolume?.growthTrend?.observedTotalSeriesHistory || []);
+  el('observedMetrics').value = JSON.stringify(bundle?.rules?.metricsVolume?.observedMetrics || [], null, 2);
   renderRulePreview();
 }
 

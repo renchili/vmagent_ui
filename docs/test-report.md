@@ -1,373 +1,245 @@
-# vmagent-ui 测试说明
+# vmagent-ui 测试与验收报告
 
-> 本文档覆盖当前项目的关键主流程验证，尤其是：配置编辑、风险治理闭环、部署骨架导出、systemd dry-run、安全边界和页面截图留档。
+这份文档关注的是：**功能是否跑通、部署骨架是否能产出、最小负载是否可接受**。
 
-## 1. 测试目标
+相关文档：
 
-验证当前版本是否具备以下能力：
+- 部署：`docs/deployment.md`
+- 压测：`docs/perf.md`
+- 项目总览：`README.md`
 
-### 配置主流程
+---
 
-- 页面可正常打开
-- 能加载当前草稿 YAML
-- 能显示 JSON 预览
-- 普通模式与高级模式都可工作
-- 能执行服务端校验
-- 能保存草稿
-- 能执行发布
+## 1. 测试范围
+
+### 功能主流程
+
+- 页面可打开
+- 能读取当前草稿配置
+- 普通模式 / 高级模式可工作
+- `POST /api/validate` 可用
+- `POST /api/config` 可用
+- `POST /api/publish` 可用
+- `GET /api/revisions` 可用
+- `POST /api/rollback/:id` 可用
+- `GET /api/audit` 可用
 
 ### 风险治理闭环
 
-- 能生成 `riskScan`
-- 能生成 `decisionPolicy`
 - `warn` 模式命中风险时默认允许
+- `warn` 模式下人工显式 `block_apply` 会终止本次保存 / 发布
 - `block` 模式命中风险时默认拒绝
-- `block` 模式下必须提供：
-  - `decision=force_apply`
-  - `confirm=true`
-  - `overrideToken`
-  - `overrideReason`
-- 保存 / 发布链路会记录最小审计信息
+- `force_apply + confirm + overrideToken + overrideReason` 可强制生效
+- 错误 `overrideToken`、缺失 `overrideReason`、`confirm=false` 但 `force_apply` 都会被拒绝
+- publish / rollback 会保留审计留痕
 
 ### 部署相关
 
-- 能生成 Docker Compose 预览
-- 能保存 Compose 文件
-- 能下载 Compose 文件
-- 能生成 systemd plan
-- systemd apply 默认 dry-run，不会做危险真实修改
+- Docker Compose 可导出
+- 非法 `outputPath` 会被显式拒绝
+- systemd plan 可生成
+- 非法 `targetDir` 会被显式拒绝
+- systemd apply 默认 dry-run
+- controlled apply 可写入受控目录
 
-### 留档相关
+### 压测相关
 
-- 能生成页面截图
-- README 能引用截图
+- 提供可运行的最小压测脚本
+- 已至少实际跑一轮基础负载
 
 ---
 
 ## 2. 测试环境
 
-- Node.js 本地运行
-- 页面访问地址：`http://127.0.0.1:3099`
+- 系统：WSL2 / Linux
+- Node.js：`v24.14.1`
+- 服务地址：`http://127.0.0.1:3099`
 - 示例配置：`config/sample-vmagent.yml`
-- 截图工具：Playwright
+- runtime profile：`data/runtime-profile.json`
 
-如果机器上没有 `vmagent` 可执行文件：
+说明：
 
-- 原生 `-dryRun` 检查会自动跳过
-- 其余 YAML / 业务规则校验仍可继续执行
+- 如果机器没有 `vmagent` 二进制，原生 `-dryRun` 会自动跳过
+- 其余 YAML / 业务规则 / 风险治理链路不受影响
 
 ---
 
-## 3. 自动化测试
-
-### 启动服务
+## 3. 自动化检查命令
 
 ```bash
 cd vmagent-ui
-npm install
-npm start
-```
-
-### 语法检查
-
-```bash
 node --check server.mjs
 node --check public/app.js
-node --check lib/risk-scan.mjs
 node --check scripts/smoke-test.mjs
-```
-
-### smoke test
-
-```bash
+node --check scripts/load-test.mjs
 npm run test:smoke
+npm run test:load
 ```
-
-通过时输出：
-
-```bash
-smoke ok
-```
-
-### 页面截图
-
-```bash
-npm run test:screenshot
-```
-
-输出文件：
-
-- `docs/vmagent-ui-screenshot.png`
 
 ---
 
 ## 4. smoke test 覆盖点
 
-`scripts/smoke-test.mjs` 当前覆盖以下关键 API / 主流程：
+`scripts/smoke-test.mjs` 当前覆盖：
 
-### 基础可用性
+### 基础接口
 
 - `GET /api/health`
-- `POST /api/validate`（正常配置）
+- `POST /api/validate`
 
-### 风险治理闭环
+### 风险治理
 
-#### 用例 A：warn + 命中风险
+- warn + 风险命中
+- warn + `block_apply` 人工终止
+- block + 风险命中但未确认
+- block + 错误 `overrideToken`
+- block + 缺失 `overrideReason`
+- block + `force_apply` 但 `confirm=false`
+- block + force_apply 保存
+- block + force_apply 发布
 
-请求特征：
+### 发布留痕
 
-- 风险配置（例如 `job_name=BadJob`、label `Env=demo`）
-- `enforcementMode=warn`
+- publish 生成 revision
+- revision 记录 `riskScan` / `riskDecision`
+- audit 记录 publish / rollback
 
-期望：
+### 回滚
 
-- `riskScan.hasRisk = true`
-- `riskScan.decisionPolicy.requiredAction = allow_apply`
-
-#### 用例 B：block + 命中风险 + 未确认
-
-请求特征：
-
-- 同样的风险配置
-- `enforcementMode=block`
-- 直接保存，不带确认参数
-
-期望：
-
-- `validate` 返回 `overrideToken`
-- `POST /api/config` 返回 400
-- 错误信息提示需要 `confirm=true`
-
-#### 用例 C：block + 命中风险 + 强制生效（save）
-
-请求特征：
-
-- `decision=force_apply`
-- `confirm=true`
-- `overrideToken=<validate 返回值>`
-- `overrideReason=<人工判断原因>`
-
-期望：
-
-- `POST /api/config` 成功
-- `riskDecision.finalAction = force_apply`
-
-#### 用例 D：block + 命中风险 + 未确认 publish
-
-期望：
-
-- `POST /api/publish` 返回 400
-- 错误信息提示需要 `confirm=true`
-
-#### 用例 E：block + 命中风险 + 强制生效（publish）
-
-期望：
-
-- `POST /api/publish` 成功
-- 生成 revision
-- revision 内包含 `riskScan` / `riskDecision`
-
-#### 用例 F：revision / rollback 恢复
-
-测试过程：
-
-- 先 publish 一个带风险 revision
-- 再 publish 一个安全 revision
-- 调用 `POST /api/rollback/:id` 回滚到前一个 revision
-
-期望：
-
-- 当前配置恢复到目标 revision 内容
-- `data/draft.yml` 同步恢复
-- `GET /api/audit` 可看到 rollback 记录
-- publish 的风险决策记录仍然保留
+- `POST /api/rollback/:id`
+- 不存在 revision 时返回 404
+- 回滚后正式配置与草稿同步恢复
 
 ### 部署骨架
 
-- `POST /api/deployment/compose/export`（inline）
-- `POST /api/deployment/compose/export`（save）
-- `POST /api/deployment/compose/export`（download）
+- `POST /api/deployment/compose/export`（inline / save / download）
+- `POST /api/deployment/compose/export` 非法 `outputPath`
 - `POST /api/systemd/plan`
+- `POST /api/systemd/plan` / `POST /api/systemd/apply` 非法 `targetDir`
 - `POST /api/systemd/apply`（dry-run）
+- 非法规则清单（坏正则、非法 enforcementMode、阈值 < 1）
 
 ---
 
-## 5. 手工测试建议
+## 5. load test 覆盖点
 
-### 5.1 UI 主流程
+`scripts/load-test.mjs` 当前覆盖：
 
-1. 打开页面
-2. 确认默认进入普通模式
-3. 查看：
-   - 配置路径
-   - 草稿路径
-   - runtime profile 路径
-4. 点击“校验 / 扫描”
-5. 观察：
-   - 风险横幅
-   - JSON 预览
-   - 校验输出
+- `POST /api/validate`
+- `POST /api/config`
+- `POST /api/publish`
+- `GET /api/revisions`
+- `POST /api/rollback/:id`
 
-### 5.2 warn 模式验证
+说明：
 
-1. 把 `enforcementMode` 设为 `warn`
-2. 填风险配置：
-   - `job_name = BadJob`
-   - label key = `Env`
-3. 点击“校验 / 扫描”
-4. 期望：
-   - 风险横幅出现
-   - 语义说明里写明当前只是提醒
-   - 默认 `decision = allow_apply`
-5. 点击“保存草稿”
-6. 应成功
-
-### 5.3 block 模式验证
-
-1. 把 `enforcementMode` 切到 `block`
-2. 继续使用风险配置
-3. 点击“校验 / 扫描”
-4. 期望：
-   - 风险横幅出现
-   - 语义说明里写明当前默认阻止
-   - `overrideToken` 自动带出
-5. 不填确认直接点“保存草稿”
-6. 应失败
-7. 然后：
-   - 点击“选择强制生效”
-   - 勾选确认
-   - 填 `overrideReason`
-8. 再次保存
-9. 应成功
-
-### 5.4 审计验证
-
-请求成功后可检查：
-
-```bash
-curl -s http://127.0.0.1:3099/api/audit
-```
-
-重点看最新记录是否包含：
-
-- `riskDecision`
-- `riskSummary`
+- `validate` / `revisions` 使用小并发
+- `publish` / `rollback` 使用串行写测试，避免无意义状态互踩
+- 脚本结束后会恢复配置文件与 runtime profile
 
 ---
 
-## 6. 典型命令样例
+## 6. 本次实际执行记录
 
-### 健康检查
+### 6.1 语法检查
 
-```bash
-curl http://127.0.0.1:3099/api/health
-```
-
-### 校验风险配置（block）
+已执行：
 
 ```bash
-curl -s http://127.0.0.1:3099/api/validate \
-  -H 'content-type: application/json' \
-  -d @- <<'JSON'
-{
-  "mode": "advanced",
-  "yaml": "global:\n  scrape_interval: 15s\n  scrape_timeout: 10s\nscrape_configs:\n  - job_name: BadJob\n    static_configs:\n      - targets:\n          - demo.internal:8080\n        labels:\n          Env: demo\nremote_write:\n  - url: http://victoriametrics:8428/api/v1/write\n",
-  "runtimeProfile": {
-    "governance": {
-      "ruleBundle": {
-        "enabled": true,
-        "enforcementMode": "block"
-      }
-    },
-    "deployment": { "target": "docker" }
-  }
-}
-JSON
+node --check server.mjs
+node --check public/app.js
+node --check scripts/smoke-test.mjs
+node --check scripts/load-test.mjs
 ```
 
-### 带 override 强制保存
+结果：通过。
+
+### 6.2 smoke test
+
+本次环境里没有 `npm`，所以直接执行：
 
 ```bash
-curl -s http://127.0.0.1:3099/api/config \
-  -H 'content-type: application/json' \
-  -d @- <<'JSON'
-{
-  "mode": "advanced",
-  "yaml": "global:\n  scrape_interval: 15s\n  scrape_timeout: 10s\nscrape_configs:\n  - job_name: BadJob\n    static_configs:\n      - targets:\n          - demo.internal:8080\n        labels:\n          Env: demo\nremote_write:\n  - url: http://victoriametrics:8428/api/v1/write\n",
-  "runtimeProfile": {
-    "governance": {
-      "ruleBundle": {
-        "enabled": true,
-        "enforcementMode": "block"
-      }
-    },
-    "deployment": { "target": "docker" }
-  },
-  "decision": "force_apply",
-  "confirm": true,
-  "overrideToken": "<validate 返回 token>",
-  "overrideReason": "值班人确认这是一次受控演练"
-}
-JSON
+node scripts/smoke-test.mjs
 ```
 
-### 导出 compose 文件到本地
+结果：通过，输出 `smoke ok`。
+
+### 6.3 load test
+
+本次环境里没有 `npm`，所以直接执行：
 
 ```bash
-curl -s http://127.0.0.1:3099/api/deployment/compose/export \
-  -H 'content-type: application/json' \
-  -d '{"mode":"save","outputPath":"./data/test-output/docker-compose.manual.yml"}'
+node scripts/load-test.mjs
 ```
 
-### 获取 systemd plan
+结果：通过，报告已输出到：
 
-```bash
-curl -s http://127.0.0.1:3099/api/systemd/plan \
-  -H 'content-type: application/json' \
-  -d '{"targetDir":"./data/systemd-preview"}'
-```
+- `docs/perf-results.json`
+
+本轮额外包含一个负向场景：
+
+- `publish-risk-rejected-wrong-token`：验证错误 `overrideToken` 在 block 模式下稳定返回拒绝
+
+摘要详见：`docs/perf.md`
 
 ---
 
-## 7. 结果判定标准
+## 7. 手工验收建议
 
-通过时至少应满足：
+### 页面层
 
-- Web 页面可访问：`http://127.0.0.1:3099`
-- README 已包含截图与完整功能清单
-- `GET /api/health` 成功
-- 正常配置 `POST /api/validate` 成功
-- 风险配置在 `warn` / `block` 下返回不同 `decisionPolicy`
-- `block` 模式未确认时不能保存
-- `block` 模式确认后能强制保存
-- `block` 模式未确认时不能 publish
-- `block` 模式在 `force_apply + confirm + overrideToken + overrideReason` 满足后能 publish
-- `GET /api/revisions` 可看到 revision 与风险治理元信息
-- `POST /api/rollback/:id` 后正式配置与草稿都恢复到目标 revision
-- `GET /api/audit` 可看到 publish / rollback 与风险决策留痕
-- Compose 导出成功
-- systemd plan 返回 warnings / steps
-- systemd apply dry-run 返回 `changed: false`
-- 页面截图文件存在：`docs/vmagent-ui-screenshot.png`
+1. 打开首页
+2. 检查页面是否正确显示当前草稿
+3. 切换普通模式 / 高级模式
+4. 修改配置后点击“校验 / 扫描”
+5. 观察 JSON 预览、校验结果、风险横幅
+
+### 风险治理层
+
+1. 设置 `enforcementMode=warn`
+2. 填入风险配置：
+   - `job_name=BadJob`
+   - label key=`Env`
+3. validate 后应提示风险但允许继续
+4. 切到 `block`
+5. 不填确认直接保存或发布，应返回 400
+6. 补齐 `force_apply + confirm + overrideToken + overrideReason` 后应成功
+
+### 发布与回滚层
+
+1. 发布一个安全 revision
+2. 发布一个风险 revision
+3. 调用 `GET /api/revisions`
+4. 回滚到目标 revision
+5. 检查：
+   - `config/sample-vmagent.yml`
+   - `data/draft.yml`
+   - `GET /api/audit`
+
+### 部署层
+
+1. 导出 compose
+2. 执行 systemd plan
+3. 执行 controlled apply 到受控目录
+4. 人工核对 unit 内容与路径
 
 ---
 
-## 8. 当前测试边界
+## 8. 当前验收结论
 
-- smoke 主要覆盖关键 API、publish 风险 override、revision / rollback 主流程，但不是全量回归测试
-- 已覆盖服务端主链路；仍没有浏览器端断言框架去逐个验证 DOM 细节
-- 已覆盖回滚后的配置恢复与审计可观察性；仍未覆盖更复杂的多 revision 分支场景
-- 没有覆盖复杂配置矩阵（如高级 relabel / service discovery）
-- 没有覆盖真实 systemd / root 权限接入
+本次交付已经补齐并验证：
 
----
+- 功能主流程可运行
+- 部署说明已补全
+- 压测脚本已补全
+- smoke / load 至少各实际跑过一轮
+- 测试与性能结果已有文档留档
 
-## 9. 建议的后续补测项
+仍需明确的边界：
 
-如果后续继续推进，可以再补：
+- 没有鉴权 / RBAC
+- systemd 真实启用仍需人工执行 `systemctl`
+- 真实 vmagent reload / restart 的性能表现要在目标环境再验一轮
 
-- 截图对比 / DOM smoke
-- 更多普通模式字段覆盖
-- 多 deployment target 的 artifact 快照测试
-- publish / rollback 的异常分支（错误 overrideToken、缺失 overrideReason、回滚不存在 revision）
-- 更细粒度的 audit / revision schema 快照断言
+如果按“单机受控、内网使用、人工审核上线”标准看，这版已经可以作为一个靠谱的 MVP 交付。
+��付。

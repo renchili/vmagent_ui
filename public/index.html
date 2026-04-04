@@ -80,7 +80,20 @@
           <div><label>metric 正则</label><input id="metricRulePattern" /></div>
           <label class="checkbox"><input type="checkbox" id="suspiciousRuleEnabled" />可疑变更提示</label>
           <div><label>新增阈值</label><input id="suspiciousThreshold" type="number" min="1" /></div>
+          <label class="checkbox"><input type="checkbox" id="metricsVolumeEnabled" />metrics 规模治理</label>
+          <div><label>每 target 预估 series</label><input id="estimatedSeriesPerTarget" type="number" min="1" /></div>
+          <div><label>总 series 阈值</label><input id="maxEstimatedSeries" type="number" min="1" /></div>
+          <div><label>单 metric label 组合阈值</label><input id="maxLabelCombinationsPerMetric" type="number" min="1" /></div>
+          <div><label>高风险 labels（逗号分隔）</label><input id="highCardinalityLabels" placeholder="user_id,session_id,trace_id" /></div>
+          <label class="checkbox"><input type="checkbox" id="growthTrendEnabled" />持续增长拦截</label>
+          <div><label>增长阈值（比例）</label><input id="maxGrowthRatio" type="number" min="0" step="0.01" /></div>
+          <div><label>连续增长周期数</label><input id="consecutiveGrowthPeriods" type="number" min="1" /></div>
+          <div><label>最少历史点数</label><input id="minHistoryPoints" type="number" min="2" /></div>
         </div>
+        <label>总 series 历史观测（JSON 数组）</label>
+        <textarea id="observedTotalSeriesHistory" spellcheck="false" placeholder="例如：[120000,132000,145000,161000]"></textarea>
+        <label>单 metric 观测（JSON 数组）</label>
+        <textarea id="observedMetrics" spellcheck="false" placeholder='例如：[{"name":"http_requests_total","labelCombinations":1500}]'></textarea>
         <pre id="rulePreview"></pre>
       </div>
       <div class="card">

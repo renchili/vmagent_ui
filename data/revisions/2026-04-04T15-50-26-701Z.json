@@ -1,0 +1,243 @@
+{
+  "id": "2026-04-04T15-50-26-701Z",
+  "author": "web-ui",
+  "note": "smoke safe publish baseline for rollback",
+  "mode": "advanced",
+  "createdAt": "2026-04-04T15:50:26.701Z",
+  "sha256": "5cd643c72f326f98de920fc666f5ef667cb9141216a3f8fa9e8c80dd634b0a19",
+  "summary": {
+    "scrapeJobs": [
+      "publish-demo"
+    ],
+    "remoteWriteCount": 1,
+    "clusterEnabled": true,
+    "membersCount": 3,
+    "memberNum": 1,
+    "replicationFactor": 1,
+    "shardByURL": true,
+    "tmpDataPath": "/var/lib/vmagent-remotewrite-data",
+    "deploymentTarget": "docker"
+  },
+  "validation": {
+    "ok": true,
+    "nativeCheck": {
+      "ok": true,
+      "skipped": true,
+      "reason": "vmagent binary not available; native check skipped."
+    },
+    "errors": []
+  },
+  "runtimeValidation": {
+    "ok": true,
+    "errors": []
+  },
+  "runtimeProfile": {
+    "cluster": {
+      "enabled": true,
+      "membersCount": 3,
+      "memberNum": 1,
+      "replicationFactor": 1
+    },
+    "remoteWrite": {
+      "shardByURL": true,
+      "tmpDataPath": "/var/lib/vmagent-remotewrite-data"
+    },
+    "governance": {
+      "ruleBundle": {
+        "version": 1,
+        "enabled": true,
+        "enforcementMode": "warn",
+        "rules": {
+          "labelNaming": {
+            "enabled": true,
+            "severity": "warning",
+            "pattern": "^[a-z_][a-z0-9_]*$",
+            "description": "Label 名建议使用 snake_case，只包含小写字母、数字和下划线，且不能数字开头。"
+          },
+          "metricNaming": {
+            "enabled": true,
+            "severity": "warning",
+            "pattern": "^[a-z_:][a-z0-9_:]*$",
+            "description": "Metric / job 名建议使用 Prometheus 风格命名，只包含小写字母、数字、下划线、冒号。"
+          },
+          "suspiciousChanges": {
+            "enabled": true,
+            "severity": "warning",
+            "additionsThreshold": 5,
+            "description": "新增过多 label、target 或 job 时给出人工复核提示。"
+          },
+          "metricsVolume": {
+            "enabled": false,
+            "severity": "warning",
+            "estimatedSeriesPerTarget": 1000,
+            "maxEstimatedSeries": 200000,
+            "maxLabelCombinationsPerMetric": 1000,
+            "highCardinalityLabels": [
+              "user_id",
+              "session_id",
+              "trace_id",
+              "request_id",
+              "device_id"
+            ],
+            "growthTrend": {
+              "enabled": false,
+              "minHistoryPoints": 3,
+              "consecutiveGrowthPeriods": 3,
+              "maxGrowthRatio": 0.3,
+              "observedTotalSeriesHistory": []
+            },
+            "observedMetrics": [],
+            "description": "基于预算与观测数据识别 metrics 总量、高基数 label 组合与持续增长风险。"
+          }
+        }
+      }
+    },
+    "deployment": {
+      "target": "docker",
+      "docker": {
+        "image": "victoriametrics/vmagent:latest",
+        "containerName": "vmagent",
+        "configMountPath": "/etc/vmagent/config.yml",
+        "dataMountPath": "/var/lib/vmagent-remotewrite-data",
+        "extraArgs": []
+      },
+      "kubernetes": {
+        "namespace": "monitoring",
+        "name": "vmagent",
+        "configMountPath": "/etc/vmagent/config.yml",
+        "dataMountPath": "/var/lib/vmagent-remotewrite-data",
+        "replicas": 1,
+        "extraArgs": []
+      },
+      "systemd": {
+        "serviceName": "vmagent",
+        "configPath": "/etc/vmagent/config.yml",
+        "dataPath": "/var/lib/vmagent-remotewrite-data",
+        "extraArgs": [],
+        "controlledApply": {
+          "enabled": true,
+          "targetDir": "./data/systemd-preview"
+        }
+      }
+    }
+  },
+  "riskScan": {
+    "ok": true,
+    "hasRisk": true,
+    "requiresManualDecision": true,
+    "summary": "检测到风险候选：当前为 warn，只提醒，默认允许保存/发布；如人工决定不生效，可显式选择 block_apply。",
+    "findings": [
+      {
+        "ruleType": "metricNaming",
+        "severity": "warning",
+        "message": "job_name publish-demo 不符合命名规则",
+        "path": "scrape_configs.publish-demo.job_name"
+      },
+      {
+        "ruleType": "suspiciousChanges",
+        "severity": "warning",
+        "message": "新增 1 个 job：publish-demo",
+        "path": "scrape_configs"
+      }
+    ],
+    "decisionPolicy": {
+      "requiredAction": "allow_apply",
+      "summary": "检测到风险候选：当前为 warn，只提醒，默认允许保存/发布；如人工决定不生效，可显式选择 block_apply。",
+      "semantics": {
+        "warn": "只提醒，不强制拦截；不需要 overrideToken。",
+        "block": "命中风险时会阻止，除非人工确认 force_apply。"
+      },
+      "confirmation": {
+        "needed": false,
+        "confirmField": null,
+        "overrideToken": null,
+        "overrideReasonRequired": false
+      }
+    },
+    "executionPlan": {
+      "intendedTarget": "vmagent / 执行侧",
+      "actualExecutor": "backend-mvp-rule-engine",
+      "ruleBundle": {
+        "version": 1,
+        "enabled": true,
+        "enforcementMode": "warn",
+        "rules": {
+          "labelNaming": {
+            "enabled": true,
+            "severity": "warning",
+            "pattern": "^[a-z_][a-z0-9_]*$",
+            "description": "Label 名建议使用 snake_case，只包含小写字母、数字和下划线，且不能数字开头。"
+          },
+          "metricNaming": {
+            "enabled": true,
+            "severity": "warning",
+            "pattern": "^[a-z_:][a-z0-9_:]*$",
+            "description": "Metric / job 名建议使用 Prometheus 风格命名，只包含小写字母、数字、下划线、冒号。"
+          },
+          "suspiciousChanges": {
+            "enabled": true,
+            "severity": "warning",
+            "additionsThreshold": 5,
+            "description": "新增过多 label、target 或 job 时给出人工复核提示。"
+          },
+          "metricsVolume": {
+            "enabled": false,
+            "severity": "warning",
+            "estimatedSeriesPerTarget": 1000,
+            "maxEstimatedSeries": 200000,
+            "maxLabelCombinationsPerMetric": 1000,
+            "highCardinalityLabels": [
+              "user_id",
+              "session_id",
+              "trace_id",
+              "request_id",
+              "device_id"
+            ],
+            "growthTrend": {
+              "enabled": false,
+              "minHistoryPoints": 3,
+              "consecutiveGrowthPeriods": 3,
+              "maxGrowthRatio": 0.3,
+              "observedTotalSeriesHistory": []
+            },
+            "observedMetrics": [],
+            "description": "基于预算与观测数据识别 metrics 总量、高基数 label 组合与持续增长风险。"
+          }
+        }
+      }
+    }
+  },
+  "riskDecision": {
+    "decision": "allow_apply",
+    "confirm": false,
+    "overrideReason": "",
+    "overrideTokenUsed": false
+  },
+  "yaml": "global:\n  scrape_interval: 30s\n  scrape_timeout: 10s\nscrape_configs:\n  - job_name: publish-demo\n    static_configs:\n      - targets:\n          - publish.demo.internal:8080\n        labels:\n          env: smoke\nremote_write:\n  - url: http://victoriametrics:8428/api/v1/write\n",
+  "json": {
+    "global": {
+      "scrape_interval": "30s",
+      "scrape_timeout": "10s"
+    },
+    "scrape_configs": [
+      {
+        "job_name": "publish-demo",
+        "static_configs": [
+          {
+            "targets": [
+              "publish.demo.internal:8080"
+            ],
+            "labels": {
+              "env": "smoke"
+            }
+          }
+        ]
+      }
+    ],
+    "remote_write": [
+      {
+        "url": "http://victoriametrics:8428/api/v1/write"
+      }
+    ]
+  }
+}

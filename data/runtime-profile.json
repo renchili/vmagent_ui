@@ -32,6 +32,29 @@
           "severity": "warning",
           "additionsThreshold": 5,
           "description": "新增过多 label、target 或 job 时给出人工复核提示。"
+        },
+        "metricsVolume": {
+          "enabled": false,
+          "severity": "warning",
+          "estimatedSeriesPerTarget": 1000,
+          "maxEstimatedSeries": 200000,
+          "maxLabelCombinationsPerMetric": 1000,
+          "highCardinalityLabels": [
+            "user_id",
+            "session_id",
+            "trace_id",
+            "request_id",
+            "device_id"
+          ],
+          "growthTrend": {
+            "enabled": false,
+            "minHistoryPoints": 3,
+            "consecutiveGrowthPeriods": 3,
+            "maxGrowthRatio": 0.3,
+            "observedTotalSeriesHistory": []
+          },
+          "observedMetrics": [],
+          "description": "基于预算与观测数据识别 metrics 总量、高基数 label 组合与持续增长风险。"
         }
       }
     }
