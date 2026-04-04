@@ -24,6 +24,8 @@
 - 新功能优先落到 Go 后端
 - 修复优先修 Go 后端
 - Node 侧除非是为了辅助迁移，否则不再继续演化
+- `npm start` 已经切到 Go 后端启动脚本
+- 旧 Node 启动只能显式使用：`npm run start:node-deprecated`
 
 ## 计划
 

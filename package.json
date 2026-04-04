@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs",
+    "start": "./scripts/start-go-backend.sh",
+    "start:go": "./scripts/start-go-backend.sh",
+    "start:node-deprecated": "node server.mjs",
+    "test:go": "bash -lc 'export PATH=$PATH:/usr/lib/go-1.22/bin:/usr/local/go/bin && go test ./...'",
+    "test:integration:vmagent": "./scripts/integration-vmagent.sh",
     "test:screenshot": "node scripts/screenshot.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:load": "node scripts/load-test.mjs"

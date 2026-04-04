@@ -56,6 +56,36 @@ Go 版已经接入：
 3. `VMAGENT_RESTART_CMD` → shell restart command
 4. 如果都没配 → `noop`
 
+### 测试与联调
+
+已经补上的 Go 测试：
+
+- `internal/app/risk_test.go`
+- `internal/app/runtime_test.go`
+- `internal/app/apply_test.go`
+
+可直接运行：
+
+```bash
+npm run test:go
+```
+
+真实 vmagent 联调入口：
+
+```bash
+npm run test:integration:vmagent
+```
+
+对应文件：
+
+- `docker-compose.vmagent.yml`
+- `scripts/integration-vmagent.sh`
+
+这套联调已经真实跑过，并且确实撞出了两个现实问题：
+
+- Docker 构建必须带上 `go.sum`
+- vmagent 若对 `-promscrape.config` 严格解析，当前 UI 生成的带 `remote_write` 顶层字段的 YAML 可能需要加 `-promscrape.config.strictParse=false`
+
 ---
 
 ## 项目结构

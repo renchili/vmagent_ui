@@ -1,0 +1,75 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: vmagent_ui
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    restart: unless-stopped
+    ports:
+      - "8428:8428"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  vmagent:
+    image: victoriametrics/vmagent:latest
+    restart: unless-stopped
+    depends_on:
+      victoriametrics:
+        condition: service_healthy
+    command:
+      - -httpListenAddr=:8429
+      - -promscrape.config=/runtime/vmagent/config.yml
+      - -promscrape.config.strictParse=false
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+    volumes:
+      - ./runtime/vmagent:/runtime/vmagent
+    ports:
+      - "8429:8429"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8429/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  vmagent-ui:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      vmagent:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3099
+      MYSQL_DSN: root:root@tcp(mysql:3306)/vmagent_ui?parseTime=true&multiStatements=true
+      STATIC_DIR: public
+      DEFAULT_CONFIG_PATH: /runtime/vmagent/config.yml
+      DEFAULT_AUTHOR: web-ui
+      VMAGENT_CONFIG_PATH: /runtime/vmagent/config.yml
+      VMAGENT_RELOAD_URL: http://vmagent:8429/-/reload
+      APPLY_MODE: reload
+    ports:
+      - "3099:3099"
+    volumes:
+      - ./public:/app/public:ro
+      - ./runtime/vmagent:/runtime/vmagent
+
+volumes:
+  mysql-data:

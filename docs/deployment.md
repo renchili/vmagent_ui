@@ -132,6 +132,14 @@ sudo systemctl status vmagent-ui --no-pager
 export VMAGENT_RELOAD_URL="http://127.0.0.1:8429/-/reload"
 ```
 
+> 注意：当前 UI 生成的 YAML 仍包含 `remote_write` 这样的顶层字段。若你的 vmagent 使用 `-promscrape.config=...` 严格解析同一份文件，建议同时加：
+>
+> ```bash
+> -promscrape.config.strictParse=false
+> ```
+>
+> 否则真实 vmagent 可能因未知字段拒绝加载该配置。这一点已经在联调里复现过。
+
 ### 方式 B：SIGHUP
 
 ```bash
