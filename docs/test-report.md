@@ -1,5 +1,7 @@
 # vmagent-ui 测试说明
 
+> 本文档已按 VictoriaMetrics 官方 vmagent 文档口径修正：UI 负责配置管理、版本、审计与发布编排；vmagent 自身的分布式/分片/复制能力以官方参数和部署方式为准。
+
 ## 测试目标
 
 验证 MVP 是否具备基础可运行性：
