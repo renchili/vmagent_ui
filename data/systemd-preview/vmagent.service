@@ -1,0 +1,11 @@
+[Unit]
+Description=vmagent
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/vmagent -promscrape.config=/etc/vmagent/config.yml -remoteWrite.tmpDataPath=/var/lib/vmagent-remotewrite-data
+Restart=always
+StateDirectory=vmagent
+
+[Install]
+WantedBy=multi-user.target

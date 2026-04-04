@@ -11,77 +11,102 @@
     <header class="hero">
       <div>
         <h1>vmagent 配置管理台</h1>
-        <p>编辑 YAML / JSON、校验、发布、回滚、查看审计记录。</p>
+        <p>普通模式只填写结构化表单；高级模式才允许直接编辑 YAML / JSON。配置保存/发布前会附带规则清单、风险扫描和人工确认语义。</p>
       </div>
       <div class="actions">
         <button id="loadBtn">重新加载</button>
-        <button id="validateBtn">校验</button>
+        <button id="validateBtn">校验 / 扫描</button>
         <button id="saveBtn">保存草稿</button>
         <button id="publishBtn" class="primary">发布</button>
       </div>
     </header>
 
     <section class="grid two">
-      <div class="card status-card">
-        <h2>当前状态</h2>
-        <div id="health"></div>
-        <div class="meta-row"><strong>配置路径：</strong><span id="configPath"></span></div>
-        <div class="meta-row"><strong>草稿路径：</strong><span id="draftPath"></span></div>
+      <div class="card">
+        <h2>编辑模式</h2>
+        <div class="mode-switch">
+          <label class="mode-card"><input type="radio" name="mode" value="normal" checked /> <strong>普通模式</strong><span>只能填写结构化表单，由后端生成 YAML 并下发。</span></label>
+          <label class="mode-card"><input type="radio" name="mode" value="advanced" /> <strong>高级模式</strong><span>允许直接编辑 YAML / JSON，适合专家用户。</span></label>
+        </div>
+        <p id="modeHint" class="hint"></p>
       </div>
       <div class="card">
-        <h2>发布说明</h2>
-        <label>发布备注</label>
-        <input id="note" placeholder="例如：新增 kafka-exporter 抓取任务" />
-        <label>操作者</label>
-        <input id="author" value="web-ui" />
+        <h2>发布信息</h2>
+        <label>发布备注</label><input id="note" placeholder="例如：新增 demo-app 采集任务" />
+        <label>操作者</label><input id="author" value="web-ui" />
+        <div class="meta-row"><strong>配置路径：</strong><span id="configPath"></span></div>
+        <div class="meta-row"><strong>草稿路径：</strong><span id="draftPath"></span></div>
+        <div class="meta-row"><strong>运行参数：</strong><span id="runtimeProfilePath"></span></div>
       </div>
     </section>
 
     <section class="grid two equal">
-      <div class="card">
-        <div class="section-head">
-          <h2>YAML 编辑器</h2>
-          <button id="formatBtn">根据 JSON 重新格式化</button>
+      <div class="card" id="normalPanel">
+        <h2>普通模式：结构化配置</h2>
+        <div class="form-grid two-cols compact">
+          <div><label>scrape_interval</label><input id="scrapeInterval" /></div>
+          <div><label>scrape_timeout</label><input id="scrapeTimeout" /></div>
+          <div><label>remote_write URL</label><input id="remoteWriteUrl" placeholder="http://victoriametrics:8428/api/v1/write" /></div>
+          <div><label>target deployment</label><select id="deploymentTarget"><option value="docker">Docker</option><option value="kubernetes">Kubernetes</option><option value="systemd">systemd</option></select></div>
+          <label class="checkbox"><input type="checkbox" id="clusterEnabled" />启用 cluster 参数</label>
+          <label class="checkbox"><input type="checkbox" id="shardByURL" />启用 shardByURL</label>
+          <div><label>membersCount</label><input id="membersCount" type="number" min="1" /></div>
+          <div><label>memberNum</label><input id="memberNum" type="number" min="0" /></div>
+          <div><label>replicationFactor</label><input id="replicationFactor" type="number" min="1" /></div>
+          <div><label>tmpDataPath</label><input id="tmpDataPath" /></div>
         </div>
-        <textarea id="yamlEditor" spellcheck="false"></textarea>
+        <h3>采集任务</h3>
+        <div id="jobsContainer" class="list"></div>
+        <button id="addJobBtn">新增 job</button>
       </div>
-      <div class="card">
-        <div class="section-head">
-          <h2>JSON 预览</h2>
-          <button id="jsonRefreshBtn">从 YAML 刷新</button>
-        </div>
+      <div class="card" id="advancedPanel">
+        <div class="section-head"><h2>高级模式：源码编辑</h2><button id="formatBtn">JSON → YAML</button></div>
+        <p class="hint">普通模式下此区域只读并灰显，避免误触源码编辑。</p>
+        <textarea id="yamlEditor" spellcheck="false"></textarea>
+        <div class="section-head"><h3>JSON 预览</h3><button id="jsonRefreshBtn">YAML → JSON</button></div>
         <textarea id="jsonEditor" spellcheck="false"></textarea>
       </div>
     </section>
 
     <section class="grid two equal">
       <div class="card">
-        <h2>校验结果</h2>
-        <pre id="validationOutput">等待校验…</pre>
+        <h2>规则清单 / 下发预览</h2>
+        <div class="form-grid two-cols compact">
+          <label class="checkbox"><input type="checkbox" id="rulesEnabled" />启用规则清单</label>
+          <div><label>执行模式</label><select id="ruleEnforcementMode"><option value="warn">warn</option><option value="block">block</option></select></div>
+          <label class="checkbox"><input type="checkbox" id="labelRuleEnabled" />label 命名规则</label>
+          <div><label>label 正则</label><input id="labelRulePattern" /></div>
+          <label class="checkbox"><input type="checkbox" id="metricRuleEnabled" />metric / job 命名规则</label>
+          <div><label>metric 正则</label><input id="metricRulePattern" /></div>
+          <label class="checkbox"><input type="checkbox" id="suspiciousRuleEnabled" />可疑变更提示</label>
+          <div><label>新增阈值</label><input id="suspiciousThreshold" type="number" min="1" /></div>
+        </div>
+        <pre id="rulePreview"></pre>
       </div>
       <div class="card">
-        <h2>版本历史</h2>
-        <div id="revisionList" class="list"></div>
-      </div>
-    </section>
-
-    <section class="grid two equal">
-      <div class="card">
-        <h2>审计日志</h2>
-        <div id="auditList" class="list"></div>
-      </div>
-      <div class="card">
-        <h2>使用说明</h2>
-        <ol>
-          <li>左侧编辑 YAML。</li>
-          <li>点击“校验”检查结构与 vmagent dry-run。</li>
-          <li>保存草稿或直接发布。</li>
-          <li>在版本历史中查看或回滚。</li>
-        </ol>
+        <h2>校验 / 风险扫描结果</h2>
+        <div id="riskBanner" class="risk-banner">等待校验…</div>
+        <div id="riskSemantics" class="hint"></div>
+        <div class="decision-panel">
+          <h3>人工判断是否生效</h3>
+          <p class="hint">三态：allow_apply（允许生效） / block_apply（明确不生效） / force_apply（带风险强制生效，仅 block 模式命中风险时需要 confirm + overrideToken + 原因）。</p>
+          <div class="actions wrap">
+            <button id="decisionAllowBtn" type="button">选择允许生效</button>
+            <button id="decisionBlockBtn" type="button">选择不生效</button>
+            <button id="decisionForceBtn" type="button">选择强制生效</button>
+          </div>
+          <label>decision</label>
+          <input id="riskDecision" value="allow_apply" />
+          <label class="checkbox"><input type="checkbox" id="riskConfirm" />我已人工复核，确认本次判断</label>
+          <label>overrideToken</label>
+          <input id="overrideToken" placeholder="validate 后自动带出；仅 block 命中风险时强制生效需要" />
+          <label>overrideReason / 审计理由</label>
+          <textarea id="overrideReason" spellcheck="false"></textarea>
+        </div>
+        <pre id="validationOutput"></pre>
       </div>
     </section>
   </div>
-
   <script type="module" src="/app.js"></script>
 </body>
 </html>

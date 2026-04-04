@@ -1,0 +1,17 @@
+services:
+  vmagent:
+    image: victoriametrics/vmagent:latest
+    container_name: vmagent
+    restart: unless-stopped
+    command:
+      - -promscrape.config=/etc/vmagent/config.yml
+      - -promscrape.cluster.membersCount=3
+      - -promscrape.cluster.memberNum=1
+      - -promscrape.cluster.replicationFactor=1
+      - -remoteWrite.shardByURL
+      - -remoteWrite.tmpDataPath=/var/lib/vmagent-remotewrite-data
+    volumes:
+      - ./config.yml:/etc/vmagent/config.yml:ro
+      - vmagent-data:/var/lib/vmagent-remotewrite-data
+volumes:
+  vmagent-data: {}
