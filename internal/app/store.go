@@ -61,18 +61,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 
 func (s *Store) GetCurrentDraft(ctx context.Context) (*ConfigDraft, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id, mode, yaml_text, json_payload, structured_payload, runtime_profile, author_name, COALESCE(note_text,''), created_at, updated_at FROM config_drafts WHERE is_current = TRUE ORDER BY id DESC LIMIT 1`)
-	var d ConfigDraft
-	var jsonRaw, structuredRaw, runtimeRaw []byte
-	if err := row.Scan(&d.ID, &d.Mode, &d.YAML, &jsonRaw, &structuredRaw, &runtimeRaw, &d.Author, &d.Note, &d.CreatedAt, &d.UpdatedAt); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if err := json.Unmarshal(jsonRaw, &d.JSON); err != nil { return nil, err }
-	if err := json.Unmarshal(structuredRaw, &d.Structured); err != nil { return nil, err }
-	if err := json.Unmarshal(runtimeRaw, &d.RuntimeProfile); err != nil { return nil, err }
-	return &d, nil
+	return scanDraftRow(row)
 }
 
 func (s *Store) SaveDraft(ctx context.Context, draft *ConfigDraft) error {
@@ -104,14 +93,16 @@ func (s *Store) ListRevisions(ctx context.Context) ([]Revision, error) {
 	defer rows.Close()
 	items := []Revision{}
 	for rows.Next() {
-		var r Revision
-		var jsonRaw, runtimeRaw []byte
-		if err := rows.Scan(&r.ID, &r.RevisionKey, &r.Mode, &r.YAML, &jsonRaw, &runtimeRaw, &r.Author, &r.Note, &r.CreatedAt); err != nil { return nil, err }
-		if err := json.Unmarshal(jsonRaw, &r.JSON); err != nil { return nil, err }
-		if err := json.Unmarshal(runtimeRaw, &r.RuntimeProfile); err != nil { return nil, err }
-		items = append(items, r)
+		r, err := scanRevisionRows(rows)
+		if err != nil { return nil, err }
+		items = append(items, *r)
 	}
 	return items, rows.Err()
+}
+
+func (s *Store) GetRevisionByID(ctx context.Context, id int64) (*Revision, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id, revision_key, mode, yaml_text, json_payload, runtime_profile, author_name, COALESCE(note_text,''), created_at FROM revisions WHERE id = ? LIMIT 1`, id)
+	return scanRevisionRow(row)
 }
 
 func (s *Store) AppendAudit(ctx context.Context, action, author, summary string, revisionID *int64) error {
@@ -146,3 +137,30 @@ func (s *Store) SeedDraftIfEmpty(ctx context.Context, draft *ConfigDraft) error 
 	if err := s.SaveDraft(ctx, draft); err != nil { return fmt.Errorf("seed draft: %w", err) }
 	return nil
 }
+
+func scanDraftRow(scanner interface{ Scan(dest ...any) error }) (*ConfigDraft, error) {
+	var d ConfigDraft
+	var jsonRaw, structuredRaw, runtimeRaw []byte
+	if err := scanner.Scan(&d.ID, &d.Mode, &d.YAML, &jsonRaw, &structuredRaw, &runtimeRaw, &d.Author, &d.Note, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows { return nil, nil }
+		return nil, err
+	}
+	if err := json.Unmarshal(jsonRaw, &d.JSON); err != nil { return nil, err }
+	if err := json.Unmarshal(structuredRaw, &d.Structured); err != nil { return nil, err }
+	if err := json.Unmarshal(runtimeRaw, &d.RuntimeProfile); err != nil { return nil, err }
+	return &d, nil
+}
+
+func scanRevisionRow(scanner interface{ Scan(dest ...any) error }) (*Revision, error) {
+	var r Revision
+	var jsonRaw, runtimeRaw []byte
+	if err := scanner.Scan(&r.ID, &r.RevisionKey, &r.Mode, &r.YAML, &jsonRaw, &runtimeRaw, &r.Author, &r.Note, &r.CreatedAt); err != nil {
+		if err == sql.ErrNoRows { return nil, nil }
+		return nil, err
+	}
+	if err := json.Unmarshal(jsonRaw, &r.JSON); err != nil { return nil, err }
+	if err := json.Unmarshal(runtimeRaw, &r.RuntimeProfile); err != nil { return nil, err }
+	return &r, nil
+}
+
+func scanRevisionRows(rows *sql.Rows) (*Revision, error) { return scanRevisionRow(rows) }

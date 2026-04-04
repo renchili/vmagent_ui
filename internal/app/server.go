@@ -3,12 +3,12 @@ package app
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +32,10 @@ type submitRequest struct {
 	RuntimeProfile RuntimeProfile `json:"runtimeProfile"`
 	Note           string         `json:"note"`
 	Author         string         `json:"author"`
+	Decision       string         `json:"decision"`
+	Confirm        bool           `json:"confirm"`
+	OverrideToken  string         `json:"overrideToken"`
+	OverrideReason string         `json:"overrideReason"`
 }
 
 func NewServer(cfg Config) (*Server, error) {
@@ -65,6 +69,7 @@ func (s *Server) routes() {
 	s.r.POST("/api/validate", s.handleValidate)
 	s.r.POST("/api/publish", s.handlePublish)
 	s.r.GET("/api/revisions", s.handleListRevisions)
+	s.r.POST("/api/rollback/:id", s.handleRollback)
 	s.r.GET("/api/audit", s.handleAudit)
 }
 
@@ -76,6 +81,8 @@ func (s *Server) handleGetConfig(c *gin.Context) {
 	draft, err := s.store.GetCurrentDraft(c.Request.Context())
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	if draft == nil { c.JSON(http.StatusNotFound, gin.H{"error": "draft not found"}); return }
+	bundle := bundleFromRuntime(draft.RuntimeProfile)
+	riskScan := ScanConfigChange(draft.JSON, draft.JSON, bundle, draft.Mode)
 	c.JSON(http.StatusOK, gin.H{
 		"yaml": draft.YAML,
 		"json": draft.JSON,
@@ -86,13 +93,13 @@ func (s *Server) handleGetConfig(c *gin.Context) {
 		"sourcePath": s.cfg.VmagentConfigPath,
 		"draftPath": "mysql:config_drafts.current",
 		"runtimeProfilePath": "mysql:config_drafts.runtime_profile",
-		"ruleBundle": draft.RuntimeProfile.Governance["ruleBundle"],
-		"riskScan": gin.H{"hasRisk": false, "summary": "Go 后端已接管基础配置读写；风险扫描迁移中。"},
+		"ruleBundle": bundle,
+		"riskScan": riskScan,
 	})
 }
 
 func (s *Server) handleValidate(c *gin.Context) {
-	payload, draft, err := s.parseSubmit(c)
+	payload, draft, riskScan, _, err := s.parseSubmit(c)
 	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
 	c.JSON(http.StatusOK, gin.H{
 		"ok": true,
@@ -102,30 +109,33 @@ func (s *Server) handleValidate(c *gin.Context) {
 		"parsed": draft.JSON,
 		"structuredConfig": draft.Structured,
 		"runtimeProfile": draft.RuntimeProfile,
-		"validation": gin.H{"ok": true, "backend": "go-gin", "notes": []string{"基础 YAML/JSON 解析通过", "完整风险规则迁移到 Go 仍在进行"}},
-		"riskScan": gin.H{"hasRisk": false, "summary": "Go 后端验证通过（第一阶段迁移版）"},
+		"ruleBundle": bundleFromRuntime(draft.RuntimeProfile),
+		"validation": gin.H{"ok": true, "backend": "go-gin", "notes": []string{"基础 YAML/JSON 解析通过", "风险扫描已切到 Go 第一版"}},
+		"riskScan": riskScan,
 	})
 }
 
 func (s *Server) handleSaveDraft(c *gin.Context) {
-	_, draft, err := s.parseSubmit(c)
+	payload, draft, _, riskDecision, err := s.parseSubmit(c)
 	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
+	if payload.Decision != "" && !riskDecision.OK { c.JSON(http.StatusBadRequest, gin.H{"error": riskDecision.Message, "riskDecision": riskDecision}); return }
 	if err := s.store.SaveDraft(c.Request.Context(), draft); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	if err := s.store.AppendAudit(c.Request.Context(), "save_draft", draft.Author, summaryOrDefault(draft.Note, "Saved draft"), nil); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "id": draft.ID, "yaml": draft.YAML, "json": draft.JSON, "structuredConfig": draft.Structured, "runtimeProfile": draft.RuntimeProfile})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "id": draft.ID, "yaml": draft.YAML, "json": draft.JSON, "structuredConfig": draft.Structured, "runtimeProfile": draft.RuntimeProfile, "riskDecision": riskDecision})
 }
 
 func (s *Server) handlePublish(c *gin.Context) {
-	_, draft, err := s.parseSubmit(c)
+	payload, draft, _, riskDecision, err := s.parseSubmit(c)
 	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
+	if payload.Decision != "" && !riskDecision.OK { c.JSON(http.StatusBadRequest, gin.H{"error": riskDecision.Message, "riskDecision": riskDecision}); return }
 	if err := s.store.SaveDraft(c.Request.Context(), draft); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	rev, err := s.store.CreateRevision(c.Request.Context(), draft)
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	if err := writeConfigFile(s.cfg.VmagentConfigPath, draft.YAML); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	if err := s.store.AppendAudit(c.Request.Context(), "publish", draft.Author, summaryOrDefault(draft.Note, "Published config"), &rev.ID); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
-	c.JSON(http.StatusOK, gin.H{"ok": true, "revision": rev, "applyResult": gin.H{"method": s.cfg.ApplyMode, "ok": true, "message": "apply pipeline placeholder for Go backend"}})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "revision": rev, "riskDecision": riskDecision, "applyResult": gin.H{"method": s.cfg.ApplyMode, "ok": true, "message": "apply pipeline placeholder for Go backend"}})
 }
 
 func (s *Server) handleListRevisions(c *gin.Context) {
@@ -134,31 +144,44 @@ func (s *Server) handleListRevisions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (s *Server) handleRollback(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "invalid revision id"}); return }
+	rev, err := s.store.GetRevisionByID(c.Request.Context(), id)
+	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
+	if rev == nil { c.JSON(http.StatusNotFound, gin.H{"error": "revision not found"}); return }
+	draft := &ConfigDraft{Mode: rev.Mode, YAML: rev.YAML, JSON: rev.JSON, Structured: map[string]any{}, RuntimeProfile: rev.RuntimeProfile, Author: rev.Author, Note: "rollback to revision " + rev.RevisionKey}
+	if err := s.store.SaveDraft(c.Request.Context(), draft); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
+	if err := writeConfigFile(s.cfg.VmagentConfigPath, rev.YAML); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
+	if err := s.store.AppendAudit(c.Request.Context(), "rollback", s.cfg.DefaultAuthor, fmt.Sprintf("Rollback to %s", rev.RevisionKey), &rev.ID); err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
+	c.JSON(http.StatusOK, gin.H{"ok": true, "revision": rev, "applyResult": gin.H{"method": s.cfg.ApplyMode, "ok": true, "message": "rollback applied"}})
+}
+
 func (s *Server) handleAudit(c *gin.Context) {
 	items, err := s.store.ListAudit(c.Request.Context())
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
-func (s *Server) parseSubmit(c *gin.Context) (*submitRequest, *ConfigDraft, error) {
+func (s *Server) parseSubmit(c *gin.Context) (*submitRequest, *ConfigDraft, RiskScan, RiskDecision, error) {
 	var payload submitRequest
-	if err := c.ShouldBindJSON(&payload); err != nil { return nil, nil, err }
+	if err := c.ShouldBindJSON(&payload); err != nil { return nil, nil, RiskScan{}, RiskDecision{}, err }
 	if payload.Mode == "" { payload.Mode = "normal" }
 	if payload.Author == "" { payload.Author = s.cfg.DefaultAuthor }
 	var yamlText string
 	jsonPayload := payload.JSON
 	if payload.Mode == "advanced" {
 		yamlText = strings.TrimSpace(payload.YAML)
-		if yamlText == "" && jsonPayload == nil { return nil, nil, errors.New("yaml or json required in advanced mode") }
+		if yamlText == "" && jsonPayload == nil { return nil, nil, RiskScan{}, RiskDecision{}, errors.New("yaml or json required in advanced mode") }
 		if yamlText == "" {
 			raw, _ := yaml.Marshal(jsonPayload)
 			yamlText = string(raw)
 		}
 		if jsonPayload == nil {
-			if err := yaml.Unmarshal([]byte(yamlText), &jsonPayload); err != nil { return nil, nil, err }
+			if err := yaml.Unmarshal([]byte(yamlText), &jsonPayload); err != nil { return nil, nil, RiskScan{}, RiskDecision{}, err }
 		}
 	} else {
-		if payload.Structured == nil { return nil, nil, errors.New("structuredConfig required in normal mode") }
+		if payload.Structured == nil { return nil, nil, RiskScan{}, RiskDecision{}, errors.New("structuredConfig required in normal mode") }
 		jsonPayload = structuredToConfigPayload(payload.Structured)
 		raw, _ := yaml.Marshal(jsonPayload)
 		yamlText = string(raw)
@@ -168,7 +191,14 @@ func (s *Server) parseSubmit(c *gin.Context) (*submitRequest, *ConfigDraft, erro
 	if payload.RuntimeProfile.Governance == nil { payload.RuntimeProfile.Governance = map[string]any{} }
 	if payload.RuntimeProfile.Deployment == nil { payload.RuntimeProfile.Deployment = map[string]any{} }
 	draft := &ConfigDraft{Mode: payload.Mode, YAML: yamlText, JSON: jsonPayload, Structured: payload.Structured, RuntimeProfile: payload.RuntimeProfile, Author: payload.Author, Note: payload.Note}
-	return &payload, draft, nil
+	current, err := s.store.GetCurrentDraft(c.Request.Context())
+	if err != nil { return nil, nil, RiskScan{}, RiskDecision{}, err }
+	previous := map[string]any{}
+	if current != nil { previous = current.JSON }
+	bundle := bundleFromRuntime(draft.RuntimeProfile)
+	riskScan := ScanConfigChange(previous, draft.JSON, bundle, draft.Mode)
+	riskDecision := EvaluateRiskDecision(riskScan, payload.Decision, payload.OverrideToken, strings.TrimSpace(payload.OverrideReason), payload.Confirm)
+	return &payload, draft, riskScan, riskDecision, nil
 }
 
 func structuredToConfigPayload(structured map[string]any) map[string]any {
@@ -200,7 +230,8 @@ func loadSeedDraft(cfg Config) (*ConfigDraft, error) {
 	if err != nil { return nil, err }
 	jsonPayload := map[string]any{}
 	if err := yaml.Unmarshal(raw, &jsonPayload); err != nil { return nil, err }
-	return &ConfigDraft{Mode: "advanced", YAML: string(raw), JSON: jsonPayload, Structured: map[string]any{}, RuntimeProfile: RuntimeProfile{Cluster: map[string]any{}, RemoteWrite: map[string]any{}, Governance: map[string]any{"ruleBundle": map[string]any{"enabled": false, "enforcementMode": "warn"}}, Deployment: map[string]any{"target": "docker"}}, Author: cfg.DefaultAuthor, Note: "seed draft"}, nil
+	bundle := DefaultRuleBundle()
+	return &ConfigDraft{Mode: "advanced", YAML: string(raw), JSON: jsonPayload, Structured: map[string]any{}, RuntimeProfile: RuntimeProfile{Cluster: map[string]any{}, RemoteWrite: map[string]any{}, Governance: map[string]any{"ruleBundle": bundle}, Deployment: map[string]any{"target": "docker"}}, Author: cfg.DefaultAuthor, Note: "seed draft"}, nil
 }
 
 func writeConfigFile(pathName, content string) error {
@@ -214,7 +245,11 @@ func summaryOrDefault(value, fallback string) string {
 	return value
 }
 
-func mustJSON(v any) string {
-	raw, _ := json.Marshal(v)
-	return string(raw)
+func bundleFromRuntime(profile RuntimeProfile) RuleBundle {
+	bundle := DefaultRuleBundle()
+	if raw, ok := profile.Governance["ruleBundle"].(map[string]any); ok {
+		if enabled, ok := raw["enabled"].(bool); ok { bundle.Enabled = enabled }
+		if mode, ok := raw["enforcementMode"].(string); ok && mode != "" { bundle.EnforcementMode = mode }
+	}
+	return NormalizeRuleBundle(bundle)
 }
