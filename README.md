@@ -51,7 +51,7 @@ npm run test:screenshot
 ```text
 vmagent-ui/
 ├─ config/                  # 示例 vmagent 配置
-├─ data/                    # 草稿、revision、audit、systemd 预览等本地状态
+├─ data/                    # 草稿；revision/audit/runtime/systemd 预览等运行时状态默认本地生成
 ├─ docs/
 │  ├─ deployment.md         # 部署说明
 │  ├─ perf.md               # 压测说明与结果
@@ -65,6 +65,28 @@ vmagent-ui/
 │  └─ screenshot.mjs        # 页面截图
 └─ server.mjs               # Fastify API + 静态资源
 ```
+
+---
+
+## 仓库跟踪策略
+
+为了让主仓库保持干净，这一版把 **高频运行时输出** 视为可重建文件，默认不纳入版本控制：
+
+- `data/audit/`
+- `data/revisions/`
+- `data/runtime-profile.json`
+- `data/systemd-preview/`
+- `data/test-output/`
+- `docs/perf-results.json`
+
+保留在仓库里的重点是：
+
+- 服务端/前端源码
+- 示例配置
+- 部署、测试、压测文档
+- 可复现这些输出的脚本
+
+也就是说，这个仓库偏向 **source-of-truth + reproducible artifacts**，不是把每次运行产生的本地状态都一起塞进 git。
 
 ---
 
