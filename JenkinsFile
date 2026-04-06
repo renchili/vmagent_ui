@@ -1,0 +1,158 @@
+pipeline {
+  agent any
+
+  environment {
+    APP_NAME    = "vmagent-ui"
+    REGISTRY    = "registry.example.com"
+    IMAGE_REPO  = "${REGISTRY}/renchili/vmagent-ui"
+    DEPLOY_HOST = "prod.example.com"
+    DEPLOY_USER = "deploy"
+    DEPLOY_DIR  = "/opt/vmagent-ui"
+    IMAGE_TAG   = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+  }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+    ansiColor('xterm')
+  }
+
+  triggers {
+    githubPush()
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Test') {
+      steps {
+        sh '''
+          set -euxo pipefail
+          go version
+          go test ./...
+        '''
+      }
+    }
+
+    stage('Build Image') {
+      steps {
+        sh '''
+          set -euxo pipefail
+          docker build -t ${IMAGE_REPO}:${IMAGE_TAG} .
+          docker tag ${IMAGE_REPO}:${IMAGE_TAG} ${IMAGE_REPO}:latest
+        '''
+      }
+    }
+
+    stage('Push Image') {
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'docker-registry-credential',
+          usernameVariable: 'DOCKER_USER',
+          passwordVariable: 'DOCKER_PASS'
+        )]) {
+          sh '''
+            set -euxo pipefail
+            echo "${DOCKER_PASS}" | docker login ${REGISTRY} -u "${DOCKER_USER}" --password-stdin
+            docker push ${IMAGE_REPO}:${IMAGE_TAG}
+            docker push ${IMAGE_REPO}:latest
+          '''
+        }
+      }
+    }
+
+    stage('Deploy') {
+      steps {
+        sshagent(credentials: ['prod-ssh-key']) {
+          sh '''
+            set -euxo pipefail
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+              set -euxo pipefail
+              mkdir -p ${DEPLOY_DIR}
+              cd ${DEPLOY_DIR}
+
+              if [ ! -f .env ]; then
+                echo '.env not found under ${DEPLOY_DIR}'
+                exit 1
+              fi
+
+              if [ ! -f docker-compose.prod.yml ]; then
+                echo 'docker-compose.prod.yml not found under ${DEPLOY_DIR}'
+                exit 1
+              fi
+
+              PREV_IMAGE_TAG=\$(grep '^IMAGE_TAG=' .env | cut -d= -f2 || true)
+              echo \${PREV_IMAGE_TAG:-} > .previous_image_tag
+
+              if grep -q '^IMAGE_TAG=' .env; then
+                sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=${IMAGE_TAG}/' .env
+              else
+                echo 'IMAGE_TAG=${IMAGE_TAG}' >> .env
+              fi
+
+              docker compose --env-file .env -f docker-compose.prod.yml pull
+              docker compose --env-file .env -f docker-compose.prod.yml up -d
+            "
+          '''
+        }
+      }
+    }
+
+    stage('Health Check') {
+      steps {
+        sh '''
+          set -euxo pipefail
+
+          for i in $(seq 1 24); do
+            if curl -fsS http://${DEPLOY_HOST}:3099/api/health >/tmp/vmagent_ui_health.json; then
+              cat /tmp/vmagent_ui_health.json
+              exit 0
+            fi
+            sleep 5
+          done
+
+          exit 1
+        '''
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Deploy success: ${IMAGE_REPO}:${IMAGE_TAG}"
+    }
+
+    failure {
+      script {
+        sshagent(credentials: ['prod-ssh-key']) {
+          sh '''
+            set +e
+            ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+              set -euxo pipefail
+              cd ${DEPLOY_DIR}
+
+              if [ -f .previous_image_tag ]; then
+                ROLLBACK_TAG=\$(cat .previous_image_tag)
+                if [ -n \"\${ROLLBACK_TAG}\" ]; then
+                  sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG='\"\${ROLLBACK_TAG}\"'/' .env
+                  docker compose --env-file .env -f docker-compose.prod.yml pull
+                  docker compose --env-file .env -f docker-compose.prod.yml up -d
+                fi
+              fi
+            "
+          '''
+        }
+      }
+      echo "Deploy failed and rollback attempted."
+    }
+
+    always {
+      cleanWs()
+    }
+  }
+}
